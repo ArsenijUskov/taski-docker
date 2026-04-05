@@ -46,3 +46,6 @@ services:
     # А тут подключаем volume со статикой к gateway
     volumes:
       - static:/staticfiles
+    # gateway должен стартовать после backend
+    depends_on:
+      - backend
