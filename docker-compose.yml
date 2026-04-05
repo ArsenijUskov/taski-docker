@@ -35,6 +35,11 @@ services:
     env_file: .env
     # Собрать образ из локальной папки ./frontend/
     build: ./frontend/
+    # Подключаем volume static к /frontend_static/
+    volumes:
+      - static:/frontend_static
+    # Вместо запуска сервера выполняем команду копирования статики
+    command: cp -r /app/build/. /frontend_static/
 
   # Контейнер gateway (новый)
   gateway:
