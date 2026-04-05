@@ -1,6 +1,8 @@
 # Перечень volume
 volumes:
   pg_data:
+  # Новый volume — для статических файлов
+  static:
 
 # Перечень контейнеров
 services:
@@ -23,6 +25,9 @@ services:
     # Какие контейнеры должны быть запущены до старта этого контейнера
     depends_on:
       - db
+    # Тут подключаем volume к backend
+    volumes:
+      - static:/backend_static
 
   # Контейнер с фронтендом
   frontend:
@@ -38,4 +43,6 @@ services:
     # Проброс порта с хоста на контейнер (8000 хоста → 80 контейнера)
     ports:
       - 8000:80
-    # Этот контейнер обычно выполняет роль обратного прокси / API шлюза
+    # А тут подключаем volume со статикой к gateway
+    volumes:
+      - static:/staticfiles
