@@ -173,7 +173,7 @@ jobs:
           push: true
           tags: arsenijuskov/taski_gateway:latest
 
-  #Deploy
+  #VM Deploy
   deploy:
     runs-on: ubuntu-latest
 
