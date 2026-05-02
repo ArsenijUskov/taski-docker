@@ -28,8 +28,11 @@ services:
     image: arsenijuskov/taski_gateway
     env_file: .env
     volumes:
-      - static_volume:/staticfiles
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+    - static_volume:/staticfiles
+    - /etc/letsencrypt:/etc/letsencrypt:ro
     ports:
-      - "80:80"
-      - "443:443"
+    - "80:80"
+    - "443:443"
+    depends_on:
+    - backend
+    - frontend
