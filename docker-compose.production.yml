@@ -30,9 +30,6 @@ services:
     volumes:
     - static_volume:/staticfiles
     - /etc/letsencrypt:/etc/letsencrypt:ro
-    ports:
-    - "9000:80"
-    - "8443:443"
     depends_on:
     - backend
     - frontend
