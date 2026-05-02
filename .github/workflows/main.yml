@@ -1,17 +1,14 @@
 name: Main Taski workflow
 
-# Когда запускать workflow
 on:
   push:
     branches:
       - main
 
 jobs:
-  #Backend Tests
   tests:
     runs-on: ubuntu-latest
 
-    # Поднимаем сервис PostgreSQL прямо внутри GitHub Actions
     services:
       postgres:
         image: postgres:13.10
@@ -21,8 +18,6 @@ jobs:
           POSTGRES_DB: django_db
         ports:
           - 5432:5432
-
-        # Проверка готовности БД (чтобы тесты не стартовали раньше времени)
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -30,24 +25,20 @@ jobs:
           --health-retries 5
 
     steps:
-      # Клонируем репозиторий
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # Устанавливаем Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: 3.12
 
-      # Устанавливаем зависимости
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip setuptools
           pip install flake8==7.3.0 flake8-isort==7.0.0
           pip install -r ./backend/requirements.txt 
 
-      # Запускаем линтер и тесты Django
       - name: Run flake8 and Django tests
         env:
           POSTGRES_USER: django_user
@@ -60,31 +51,23 @@ jobs:
           cd backend/
           python manage.py test
 
-  #Backend Build
-  build_and_push_to_docker_hub:
-    name: Push backend Docker image to DockerHub
-    runs-on: ubuntu-latest
 
-    # Выполняется только после tests
+  build_backend:
+    runs-on: ubuntu-latest
     needs: tests
 
     steps:
-      # Снова клонируем репозиторий (раннер новый!)
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      # Устанавливаем Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Логинимся в Docker Hub через secrets
       - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_LOGIN }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Сборка и отправка Docker-образа backend
       - name: Build and push backend image
         uses: docker/build-push-action@v4
         with:
@@ -92,54 +75,45 @@ jobs:
           push: true
           tags: arsenijuskov/taski_backend:latest
 
-  #Frontend Tests
+
   frontend_tests:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
 
-      # Устанавливаем Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 18
 
-      # Устанавливаем зависимости
       - name: Install dependencies
         run: |
           cd frontend/
           npm ci
 
-      # Запускаем тесты
       - name: Run frontend tests
         run: |
           cd frontend/
           npm run test
 
-  #Frontend Build
-  build_frontend_and_push_to_docker_hub:
-    name: Push frontend Docker image to DockerHub
-    runs-on: ubuntu-latest
 
-    # Выполняется после frontend_tests
+  build_frontend:
+    runs-on: ubuntu-latest
     needs: frontend_tests
 
     steps:
       - uses: actions/checkout@v3
 
-      # Устанавливаем Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Логинимся в Docker
-      - name: Login to Docker
+      - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_LOGIN }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Сборка и отправка frontend
       - name: Build and push frontend image
         uses: docker/build-push-action@v4
         with:
@@ -147,25 +121,22 @@ jobs:
           push: true
           tags: arsenijuskov/taski_frontend:latest
 
-  #Gateway Build
-  build_gateway_and_push_to_docker_hub:
+
+  build_gateway:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
 
-      # Устанавливаем Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Логинимся в Docker
-      - name: Login to Docker
+      - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_LOGIN }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Сборка и отправка gateway
       - name: Build and push gateway image
         uses: docker/build-push-action@v4
         with:
@@ -173,30 +144,26 @@ jobs:
           push: true
           tags: arsenijuskov/taski_gateway:latest
 
-  #VM Deploy
+
   deploy:
     runs-on: ubuntu-latest
-
-    # Ждём все сборки
     needs:
-      - build_and_push_to_docker_hub
-      - build_frontend_and_push_to_docker_hub
-      - build_gateway_and_push_to_docker_hub
+      - build_backend
+      - build_frontend
+      - build_gateway
 
     steps:
       - uses: actions/checkout@v3
 
-      # Копируем docker-compose на сервер
       - name: Copy docker-compose
         uses: appleboy/scp-action@master
         with:
-          host: ${{ secrets.HOST }}          
-          username: ${{ secrets.USER }}      
-          key: ${{ secrets.SSH_KEY }}        
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_KEY }}
           source: "docker-compose.production.yml"
-          target: "taski"
+          target: "taski-docker"
 
-      # Подключаемся к серверу и запускаем контейнеры
       - name: Deploy via SSH
         uses: appleboy/ssh-action@master
         with:
@@ -206,17 +173,14 @@ jobs:
           script: |
             cd taski-docker
             sudo docker compose -f docker-compose.production.yml pull
-            sudo docker compose -f docker-compose.production.yml down
-            sudo docker compose -f docker-compose.production.yml up -d
+            sudo docker compose -f docker-compose.production.yml up -d --build
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py migrate
             sudo docker compose -f docker-compose.production.yml exec backend python manage.py collectstatic
             sudo docker compose -f docker-compose.production.yml exec backend cp -r /app/collected_static/. /backend_static/static/
 
-  #Уведомление в Telegram
+
   send_message:
     runs-on: ubuntu-latest
-
-    # Выполняется после deploy
     needs: deploy
 
     steps:
